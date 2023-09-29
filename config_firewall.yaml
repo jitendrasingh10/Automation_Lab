@@ -1,0 +1,25 @@
+---
+- name: Configure firewall
+  hosts: all
+  gather_facts: true
+  connection: httpapi
+  collections:
+   - community.general
+   - fortinet.fortios
+  tasks:
+  - name: Configure global attributes.
+    fortios_system_global:
+      vdom:  "{{ vdom }}"
+      access_token: "{{ access_token }}"
+      system_global:
+        admintimeout: "{{ admintimeout }}"
+        hostname: "{{ hostname }}"
+  - name: Sending an e-mail using Gmail SMTP servers
+    mail:
+        host: smtp.gmail.com
+        port: 587
+        username: "{{ from_mail }}"
+        password: "{{ password }}"
+        to: "{{ to_mail }}"
+        subject: Ansible ISV Lab - fortigate configured
+        body:    fortigate hostname is "{{ hostname }}" configured successfully
