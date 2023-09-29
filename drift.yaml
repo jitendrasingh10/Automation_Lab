@@ -1,0 +1,90 @@
+---
+
+- name: Gather facts across hosts and compare to reference host
+  hosts: all
+  gather_facts: yes
+
+  vars_prompt:
+    - name: refhost
+      prompt: "Please type the hostname of your reference host, as seen in inventory"
+      private: no
+
+  vars:
+    # List the full paths of the config files that we want to compare
+    my_configs:
+      - /etc/hosts
+      - /etc/ssh/sshd_config
+
+  pre_tasks:
+
+    - name: Make staging folders on Ansible server
+      delegate_to: localhost
+      run_once: yes
+      file:
+        state: directory
+        path: "{{ playbook_dir }}/{{ item }}"
+      loop:
+        - host_configs
+        - diff_files
+        - diff_reports
+
+  tasks:
+
+  # Destination is relative to the folder the playbook is sitting in.
+    - name: Fetch configs of interest across the environment, including the reference host
+      fetch:
+        src: "{{ item }}"
+        dest: host_configs
+      loop: "{{ my_configs }}"
+  
+    # You could be fancy and use the 'package_facts' module,
+    # but command output is fine for quick and dirty diffs.
+    - name: Fetch RPM package detailed info
+      shell:
+        cmd: rpm -qa | sort
+      register: package_result
+  
+    - name: Save package info as server fact
+      set_fact:
+        packagelist: "{{ package_result.stdout_lines }}"
+   
+  
+    # Diff command gives a nonzero return code on changes, so we account for that using changed_when
+    - name: On Ansible server, recursively diff the files of each host against the reference host
+      delegate_to: localhost
+      shell:
+        cmd: "diff -r -y --suppress-common-lines {{ playbook_dir }}/host_configs/{{ refhost }} {{ playbook_dir }}/host_configs/{{ inventory_hostname }}"
+      # args:
+      #   executable: /usr/bin
+      register: diff_result
+      changed_when: diff_result.rc == 1
+      failed_when: diff_result.rc > 1
+  
+    - name: Generate diff reports on Ansible server
+      delegate_to: localhost
+      template:
+        src: "{{ playbook_dir }}/diff_report.j2"
+        dest: "{{ playbook_dir }}/diff_reports/report_{{inventory_hostname}}.txt"
+    
+    - name: Sending an e-mail using Gmail SMTP servers
+      delegate_to: localhost
+      mail:
+        host: smtp.gmail.com
+        port: 587
+        username: "{{ from_mail }}"
+        password: "{{ password }}"
+        to: "{{ to_mail }}"
+        subject: Ansible Report
+        body: System {{ansible_hostname}} reports.
+        attach: "{{ playbook_dir }}/diff_reports/report_{{inventory_hostname}}.txt"
+    
+    - name: Print a diff summary
+      debug:
+        msg: 
+         -  "Host {{ refhost }} -> {{ inventory_hostname }}"
+         - "Config diffs {{ diff_result.stdout_lines }}"
+         - "Package diffs {{ hostvars[refhost]['packagelist'] | symmetric_difference(packagelist) }}"
+  
+    # - name: Wrapping up
+    #   debug:
+    #     msg: "Diff reports are under {{ playbook_dir }}/diff_reports/. Press Enter to finish the playbook"

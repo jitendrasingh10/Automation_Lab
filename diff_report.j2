@@ -1,0 +1,14 @@
+This host: {{ inventory_hostname }}
+Reference host: {{ refhost }}
+
+Diff score is a count of the output lines of each diff command,
+giving you a rough estimate of the amount of "drift" between hosts.
+
+Configuration diff score: {{ diff_result.stdout_lines | length }}
+Package diff score: {{ hostvars[refhost]['packagelist'] | symmetric_difference(packagelist) | length }}
+
+All configuration differences:
+{{ diff_result.stdout_lines | to_nice_yaml }}
+
+Packages on {{ refhost }} and {{ inventory_hostname }} that differ
+{{ hostvars[refhost]['packagelist'] | symmetric_difference(packagelist) | to_nice_yaml }}
